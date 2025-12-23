@@ -8,7 +8,7 @@ import ExcitementGauge from '@/components/ExcitementGauge';
 import LyricsDisplay from '@/components/LyricsDisplay';
 import { FansaRequestDisplay } from '@/components/FansaButton';
 import { FansaType } from '@/types';
-import { SONGS } from '@/data/songs';
+import { SONGS, Song } from '@/data/songs';
 
 const MOCK_FANSA_SEQUENCE: { type: FansaType; fromName: string; delay: number }[] = [
   { type: 'wave', fromName: 'ヒカル', delay: 8000 },
@@ -23,7 +23,7 @@ interface FansaRequestState {
   id: string;
 }
 
-type GamePhase = 'ready' | 'countdown' | 'playing';
+type GamePhase = 'song-select' | 'ready' | 'countdown' | 'playing';
 
 export default function SingerPage() {
   const router = useRouter();
@@ -33,14 +33,18 @@ export default function SingerPage() {
   const { room, updateExcitement, endGame: endGameStore } = useGameStore();
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  const [phase, setPhase] = useState<GamePhase>('ready');
+  const [phase, setPhase] = useState<GamePhase>('song-select');
+  const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [countdown, setCountdown] = useState(3);
   const [currentTime, setCurrentTime] = useState(0);
   const [fansaRequests, setFansaRequests] = useState<FansaRequestState[]>([]);
   const [audienceCount] = useState(3 + Math.floor(Math.random() * 3));
   const [completedCount, setCompletedCount] = useState(0);
 
-  const song = SONGS[0];
+  const handleSongSelect = (song: Song) => {
+    setSelectedSong(song);
+    setPhase('ready');
+  };
 
   const handleStart = async () => {
     setPhase('countdown');
@@ -52,7 +56,6 @@ export default function SingerPage() {
     
     setPhase('playing');
     
-    // 音楽再生
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
       try {
@@ -118,7 +121,11 @@ export default function SingerPage() {
   };
 
   const handleBack = () => {
-    router.push(`/room/${roomId}`);
+    if (phase === 'ready') {
+      setPhase('song-select');
+    } else {
+      router.push(`/room/${roomId}`);
+    }
   };
 
   const excitement = room?.excitementGauge || 0;
@@ -126,25 +133,72 @@ export default function SingerPage() {
 
   return (
     <main className="min-h-screen flex flex-col">
-      {/* Audio element - 常に存在 */}
-      <audio 
-        ref={audioRef} 
-        src={song.audioUrl} 
-        preload="auto"
-        onEnded={handleFinish}
-      />
+      {/* Audio element */}
+      {selectedSong && (
+        <audio 
+          ref={audioRef} 
+          src={selectedSong.audioUrl} 
+          preload="auto"
+          onEnded={handleFinish}
+        />
+      )}
+
+      {/* Song Selection */}
+      {phase === 'song-select' && (
+        <div className="flex-1 flex flex-col p-6 bg-orbs">
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-bold text-white mb-2">🎤 曲を選択</h1>
+            <p className="text-white/50 text-sm">歌いたい曲を選んでください</p>
+          </div>
+
+          <div className="space-y-4">
+            {SONGS.map((song, index) => (
+              <motion.button
+                key={song.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleSongSelect(song)}
+                className="w-full p-5 rounded-2xl backdrop-blur-md bg-white/8 border border-white/15 hover:bg-white/15 transition-all text-left"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="text-4xl">{song.coverEmoji}</span>
+                  <div className="flex-1">
+                    <h3 className="text-white font-semibold text-lg">{song.title}</h3>
+                    <p className="text-white/50 text-sm">{song.artist}</p>
+                    <div className="flex gap-3 mt-1 text-xs text-white/40">
+                      <span>BPM {song.bpm}</span>
+                      <span>•</span>
+                      <span>{song.genre}</span>
+                    </div>
+                  </div>
+                  <div className="text-white/30 text-2xl">→</div>
+                </div>
+              </motion.button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => router.push(`/room/${roomId}`)}
+            className="mt-auto text-white/40 text-sm text-center py-4"
+          >
+            ← 戻る
+          </button>
+        </div>
+      )}
 
       {/* Ready Phase */}
-      {phase === 'ready' && (
-        <div className="flex-1 flex flex-col items-center justify-center p-4">
+      {phase === 'ready' && selectedSong && (
+        <div className="flex-1 flex flex-col items-center justify-center p-4 bg-orbs">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             className="text-center"
           >
-            <span className="text-8xl block mb-4">{song.coverEmoji}</span>
-            <h1 className="text-3xl font-bold text-white mb-2">{song.title}</h1>
-            <p className="text-white/60 mb-8">{song.artist}</p>
+            <span className="text-8xl block mb-4">{selectedSong.coverEmoji}</span>
+            <h1 className="text-3xl font-bold text-white mb-2">{selectedSong.title}</h1>
+            <p className="text-white/60 mb-8">{selectedSong.artist}</p>
             
             <motion.button
               whileTap={{ scale: 0.98 }}
@@ -158,21 +212,25 @@ export default function SingerPage() {
               onClick={handleBack}
               className="block text-white/40 text-sm mt-4 mx-auto"
             >
-              ← 戻る
+              ← 曲選択に戻る
             </button>
           </motion.div>
         </div>
       )}
 
       {/* Countdown Phase */}
-      {phase === 'countdown' && (
-        <div className="flex-1 flex items-center justify-center">
+      {phase === 'countdown' && selectedSong && (
+        <div className="flex-1 flex items-center justify-center bg-orbs">
           <motion.div
             key={countdown}
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className="text-center"
           >
+            <div className="mb-4">
+              <span className="text-3xl">{selectedSong.coverEmoji}</span>
+              <span className="text-white/60 text-sm ml-2">{selectedSong.title}</span>
+            </div>
             <motion.span
               className="text-9xl font-bold gradient-text"
               animate={{ scale: [1, 1.2, 1] }}
@@ -186,8 +244,8 @@ export default function SingerPage() {
       )}
 
       {/* Playing Phase */}
-      {phase === 'playing' && (
-        <div className="flex-1 flex flex-col p-4">
+      {phase === 'playing' && selectedSong && (
+        <div className="flex-1 flex flex-col p-4 bg-orbs">
           {/* Header */}
           <div className="flex justify-between items-center mb-4">
             <div>
@@ -213,14 +271,14 @@ export default function SingerPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center mb-4"
           >
-            <span className="text-3xl mr-2">{song.coverEmoji}</span>
-            <span className="text-white font-bold text-xl">{song.title}</span>
+            <span className="text-3xl mr-2">{selectedSong.coverEmoji}</span>
+            <span className="text-white font-bold text-xl">{selectedSong.title}</span>
           </motion.div>
 
           {/* Lyrics Display */}
           <div className="mb-6">
             <LyricsDisplay 
-              lyrics={song.lyrics} 
+              lyrics={selectedSong.lyrics} 
               currentTime={currentTime}
             />
           </div>

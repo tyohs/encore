@@ -50,29 +50,23 @@ export const BASE_POINTS: Record<NoteType, number> = {
   special: 100,
 };
 
-// ============================================
-// 「仰げば尊し」の譜面データ
-// BPM: 72, 1拍 = 833ms
-// 曲の長さ: 約3分18秒 = 198秒 = 198000ms
-// ============================================
-
-const BEAT = 833;
-const SONG_DURATION = 198000; // 3分18秒
-
-function generateChart(
+// 汎用の譜面生成関数
+function generateChartForSong(
+  songId: string,
   instrument: InstrumentType,
+  bpm: number,
+  duration: number, // 秒
   density: number
 ): NoteData[] {
   const notes: NoteData[] = [];
-  const interval = BEAT / density;
+  const beat = 60000 / bpm; // 1拍のミリ秒
+  const interval = beat / density;
   let noteIndex = 0;
   
-  // 2秒後から曲終了5秒前まで
   const startTime = 2000;
-  const endTime = SONG_DURATION - 5000;
+  const endTime = duration * 1000 - 5000;
 
   for (let time = startTime; time < endTime; time += interval) {
-    // 16ノートごとにスペシャル
     const type: NoteType = noteIndex % 16 === 0 ? 'special' : 'tap';
     const lane = instrument === 'drums' ? (noteIndex % 4) : undefined;
     
@@ -83,43 +77,141 @@ function generateChart(
   return notes;
 }
 
-// ドラム - 1拍に1ノート
-const drumsEasy: InstrumentChart = {
+// 全楽器の譜面を一括生成
+function generateAllInstruments(
+  songId: string,
+  bpm: number,
+  duration: number
+): InstrumentChart[] {
+  const instruments: { instrument: InstrumentType; density: number }[] = [
+    { instrument: 'drums', density: 1 },
+    { instrument: 'guitar', density: 0.5 },
+    { instrument: 'keyboard', density: 0.25 },
+    { instrument: 'bass', density: 0.5 },
+  ];
+
+  return instruments.map(({ instrument, density }) => ({
+    songId,
+    instrument,
+    difficulty: 'easy' as Difficulty,
+    notes: generateChartForSong(songId, instrument, bpm, duration, density),
+  }));
+}
+
+// ============================================
+// 「仰げば尊し」BPM: 96, 長さ: 198秒
+// ============================================
+
+const aogeba_drums: InstrumentChart = {
   songId: 'aogeba_toutoshi',
   instrument: 'drums',
   difficulty: 'easy',
-  notes: generateChart('drums', 1),
+  notes: generateChartForSong('aogeba_toutoshi', 'drums', 96, 198, 1),
 };
 
-// ギター - 2拍に1ノート
-const guitarEasy: InstrumentChart = {
+const aogeba_guitar: InstrumentChart = {
   songId: 'aogeba_toutoshi',
   instrument: 'guitar',
   difficulty: 'easy',
-  notes: generateChart('guitar', 0.5),
+  notes: generateChartForSong('aogeba_toutoshi', 'guitar', 96, 198, 0.5),
 };
 
-// キーボード - 4拍に1ノート
-const keyboardEasy: InstrumentChart = {
+const aogeba_keyboard: InstrumentChart = {
   songId: 'aogeba_toutoshi',
   instrument: 'keyboard',
   difficulty: 'easy',
-  notes: generateChart('keyboard', 0.25),
+  notes: generateChartForSong('aogeba_toutoshi', 'keyboard', 96, 198, 0.25),
 };
 
-// ベース - 2拍に1ノート
-const bassEasy: InstrumentChart = {
+const aogeba_bass: InstrumentChart = {
   songId: 'aogeba_toutoshi',
   instrument: 'bass',
   difficulty: 'easy',
-  notes: generateChart('bass', 0.5),
+  notes: generateChartForSong('aogeba_toutoshi', 'bass', 96, 198, 0.5),
+};
+
+// ============================================
+// 「シャイニングスター」BPM: 158, 長さ: 240秒
+// ============================================
+
+const shining_drums: InstrumentChart = {
+  songId: 'shining_star',
+  instrument: 'drums',
+  difficulty: 'easy',
+  notes: generateChartForSong('shining_star', 'drums', 158, 240, 1),
+};
+
+const shining_guitar: InstrumentChart = {
+  songId: 'shining_star',
+  instrument: 'guitar',
+  difficulty: 'easy',
+  notes: generateChartForSong('shining_star', 'guitar', 158, 240, 0.5),
+};
+
+const shining_keyboard: InstrumentChart = {
+  songId: 'shining_star',
+  instrument: 'keyboard',
+  difficulty: 'easy',
+  notes: generateChartForSong('shining_star', 'keyboard', 158, 240, 0.25),
+};
+
+const shining_bass: InstrumentChart = {
+  songId: 'shining_star',
+  instrument: 'bass',
+  difficulty: 'easy',
+  notes: generateChartForSong('shining_star', 'bass', 158, 240, 0.5),
+};
+
+// ============================================
+// 「Asou」BPM: 80, 長さ: 200秒
+// ============================================
+
+const asou_drums: InstrumentChart = {
+  songId: 'asou',
+  instrument: 'drums',
+  difficulty: 'easy',
+  notes: generateChartForSong('asou', 'drums', 80, 200, 1),
+};
+
+const asou_guitar: InstrumentChart = {
+  songId: 'asou',
+  instrument: 'guitar',
+  difficulty: 'easy',
+  notes: generateChartForSong('asou', 'guitar', 80, 200, 0.5),
+};
+
+const asou_keyboard: InstrumentChart = {
+  songId: 'asou',
+  instrument: 'keyboard',
+  difficulty: 'easy',
+  notes: generateChartForSong('asou', 'keyboard', 80, 200, 0.25),
+};
+
+const asou_bass: InstrumentChart = {
+  songId: 'asou',
+  instrument: 'bass',
+  difficulty: 'easy',
+  notes: generateChartForSong('asou', 'bass', 80, 200, 0.5),
 };
 
 export const CHARTS: InstrumentChart[] = [
-  drumsEasy,
-  guitarEasy,
-  keyboardEasy,
-  bassEasy,
+  // 仰げば尊し
+  aogeba_drums,
+  aogeba_guitar,
+  aogeba_keyboard,
+  aogeba_bass,
+  // シャイニングスター
+  shining_drums,
+  shining_guitar,
+  shining_keyboard,
+  shining_bass,
+  // Asou
+  asou_drums,
+  asou_guitar,
+  asou_keyboard,
+  asou_bass,
+  // バーニングハート
+  ...generateAllInstruments('burning_heart', 142, 240),
 ];
 
 export function getChart(
