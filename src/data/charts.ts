@@ -10,10 +10,10 @@ export type Difficulty = 'easy' | 'normal' | 'hard';
 export type Judgment = 'perfect' | 'great' | 'good' | 'miss';
 
 export interface NoteData {
-  time: number;           // 曲開始からの時間（ミリ秒）
+  time: number;
   type: NoteType;
-  duration?: number;      // HOLDノートの長さ（ミリ秒）
-  lane?: number;          // レーン番号（ドラムなど）
+  duration?: number;
+  lane?: number;
 }
 
 export interface InstrumentChart {
@@ -23,14 +23,12 @@ export interface InstrumentChart {
   notes: NoteData[];
 }
 
-// タイミング判定の閾値（ミリ秒）
 export const JUDGMENT_WINDOWS = {
   perfect: 100,
   great: 180,
   good: 300,
 };
 
-// 判定ごとのスコア倍率
 export const JUDGMENT_MULTIPLIERS: Record<Judgment, number> = {
   perfect: 2.0,
   great: 1.5,
@@ -38,7 +36,6 @@ export const JUDGMENT_MULTIPLIERS: Record<Judgment, number> = {
   miss: 0,
 };
 
-// コンボボーナス倍率
 export function getComboMultiplier(combo: number): number {
   if (combo >= 100) return 3.0;
   if (combo >= 50) return 2.0;
@@ -47,7 +44,6 @@ export function getComboMultiplier(combo: number): number {
   return 1.0;
 }
 
-// ベースポイント
 export const BASE_POINTS: Record<NoteType, number> = {
   tap: 30,
   hold: 50,
@@ -55,68 +51,70 @@ export const BASE_POINTS: Record<NoteType, number> = {
 };
 
 // ============================================
-// 「仰げば尊し」の譜面データ (BPM: 72)
-// 1拍 = 60000 / 72 = 833ms
-// 曲の長さ: 約60秒（デモ用に短縮）
+// 「仰げば尊し」の譜面データ
+// BPM: 72, 1拍 = 833ms
+// 曲の長さ: 約3分18秒 = 198秒 = 198000ms
 // ============================================
 
-const BEAT = 833; // 1拍のミリ秒
+const BEAT = 833;
+const SONG_DURATION = 198000; // 3分18秒
 
-// 譜面を自動生成するヘルパー
 function generateChart(
   instrument: InstrumentType,
-  startTime: number,
-  endTime: number,
-  density: number // 拍あたりのノート数
+  density: number
 ): NoteData[] {
   const notes: NoteData[] = [];
   const interval = BEAT / density;
   let noteIndex = 0;
+  
+  // 2秒後から曲終了5秒前まで
+  const startTime = 2000;
+  const endTime = SONG_DURATION - 5000;
 
   for (let time = startTime; time < endTime; time += interval) {
+    // 16ノートごとにスペシャル
     const type: NoteType = noteIndex % 16 === 0 ? 'special' : 'tap';
     const lane = instrument === 'drums' ? (noteIndex % 4) : undefined;
     
-    notes.push({ time, type, lane });
+    notes.push({ time: Math.round(time), type, lane });
     noteIndex++;
   }
 
   return notes;
 }
 
-// ドラム譜面 - リズムをキープ（4レーン）
+// ドラム - 1拍に1ノート
 const drumsEasy: InstrumentChart = {
   songId: 'aogeba_toutoshi',
   instrument: 'drums',
   difficulty: 'easy',
-  notes: generateChart('drums', 2000, 55000, 1), // 2秒〜55秒、1拍に1ノート
+  notes: generateChart('drums', 1),
 };
 
-// ギター譜面 - メロディに合わせる
+// ギター - 2拍に1ノート
 const guitarEasy: InstrumentChart = {
   songId: 'aogeba_toutoshi',
   instrument: 'guitar',
   difficulty: 'easy',
-  notes: generateChart('guitar', 2000, 55000, 0.5), // 2拍に1ノート
+  notes: generateChart('guitar', 0.5),
 };
 
-// キーボード譜面 - コードチェンジ（簡単）
+// キーボード - 4拍に1ノート
 const keyboardEasy: InstrumentChart = {
   songId: 'aogeba_toutoshi',
   instrument: 'keyboard',
   difficulty: 'easy',
-  notes: generateChart('keyboard', 2000, 55000, 0.25), // 4拍に1ノート
+  notes: generateChart('keyboard', 0.25),
 };
 
-// ベース譜面 - ルート音
+// ベース - 2拍に1ノート
 const bassEasy: InstrumentChart = {
   songId: 'aogeba_toutoshi',
   instrument: 'bass',
   difficulty: 'easy',
-  notes: generateChart('bass', 2000, 55000, 0.5), // 2拍に1ノート
+  notes: generateChart('bass', 0.5),
 };
 
-// 全譜面データ
 export const CHARTS: InstrumentChart[] = [
   drumsEasy,
   guitarEasy,
@@ -124,7 +122,6 @@ export const CHARTS: InstrumentChart[] = [
   bassEasy,
 ];
 
-// 曲IDと楽器と難易度から譜面を取得
 export function getChart(
   songId: string, 
   instrument: InstrumentType, 
@@ -137,7 +134,6 @@ export function getChart(
   );
 }
 
-// 曲IDから全楽器の譜面を取得
 export function getChartsForSong(songId: string): InstrumentChart[] {
   return CHARTS.filter(chart => chart.songId === songId);
 }

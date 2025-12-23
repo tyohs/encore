@@ -21,9 +21,8 @@ export default function BandPlayPage() {
   const [countdown, setCountdown] = useState(3);
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
-  // 仰げば尊しを使用
   const song = SONGS[0];
   const difficulty: Difficulty = 'easy';
 
@@ -31,7 +30,6 @@ export default function BandPlayPage() {
     setSelectedInstrument(instrument);
     setPhase('countdown');
 
-    // カウントダウン
     for (let i = 3; i > 0; i--) {
       setCountdown(i);
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -39,10 +37,13 @@ export default function BandPlayPage() {
 
     setPhase('playing');
     
-    // 音楽再生開始
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
-      audioRef.current.play();
+      try {
+        await audioRef.current.play();
+      } catch (e) {
+        console.error('Audio playback failed:', e);
+      }
     }
   };
 
@@ -67,8 +68,8 @@ export default function BandPlayPage() {
     : null;
 
   return (
-    <main className="h-screen flex flex-col bg-gradient-to-b from-gray-900 via-purple-900/30 to-gray-900">
-      {/* Hidden audio element */}
+    <main className="h-screen flex flex-col bg-orbs">
+      {/* Audio element */}
       <audio 
         ref={audioRef} 
         src={song.audioUrl} 
@@ -76,7 +77,7 @@ export default function BandPlayPage() {
         onEnded={handleGameEnd}
       />
 
-      {/* Instrument Selection Phase */}
+      {/* Instrument Selection */}
       {phase === 'instrument-select' && (
         <InstrumentSelect 
           onSelect={handleInstrumentSelect}
@@ -84,40 +85,36 @@ export default function BandPlayPage() {
         />
       )}
 
-      {/* Countdown Phase */}
+      {/* Countdown */}
       {phase === 'countdown' && selectedInstrument && (
         <div className="flex-1 flex items-center justify-center">
           <motion.div
             key={countdown}
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 2, opacity: 0 }}
             className="text-center"
           >
-            <div className="mb-4">
-              <span 
-                className="text-6xl p-4 rounded-2xl inline-block"
-                style={{ backgroundColor: `${INSTRUMENT_INFO[selectedInstrument].color}30` }}
-              >
-                {INSTRUMENT_INFO[selectedInstrument].emoji}
-              </span>
+            <div 
+              className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mx-auto mb-6"
+              style={{ backgroundColor: `${INSTRUMENT_INFO[selectedInstrument].color}20` }}
+            >
+              {INSTRUMENT_INFO[selectedInstrument].emoji}
             </div>
             <motion.span
-              className="text-9xl font-bold"
-              style={{ color: INSTRUMENT_INFO[selectedInstrument].color }}
-              animate={{ scale: [1, 1.2, 1] }}
+              className="text-8xl font-bold text-white block"
+              animate={{ scale: [1, 1.1, 1] }}
               transition={{ duration: 0.5 }}
             >
               {countdown}
             </motion.span>
-            <p className="text-white/60 text-xl mt-4">
-              {INSTRUMENT_INFO[selectedInstrument].label}で演奏開始！
+            <p className="text-white/50 mt-4">
+              {INSTRUMENT_INFO[selectedInstrument].label}で演奏開始
             </p>
           </motion.div>
         </div>
       )}
 
-      {/* Playing Phase */}
+      {/* Playing */}
       {phase === 'playing' && selectedInstrument && chart && (
         <BandGame 
           chart={chart}
@@ -128,7 +125,7 @@ export default function BandPlayPage() {
         />
       )}
 
-      {/* Finished Phase */}
+      {/* Finished */}
       {phase === 'finished' && (
         <div className="flex-1 flex items-center justify-center">
           <motion.div
@@ -136,12 +133,12 @@ export default function BandPlayPage() {
             animate={{ scale: 1, opacity: 1 }}
             className="text-center"
           >
-            <span className="text-6xl block mb-4">🎉</span>
-            <h1 className="text-4xl font-bold gradient-text mb-4">演奏完了！</h1>
-            <p className="text-white text-2xl">
-              スコア: <span className="font-bold">{score.toLocaleString()}</span>
+            <span className="text-5xl block mb-6">🎉</span>
+            <h1 className="text-3xl font-bold text-white mb-4">演奏完了</h1>
+            <p className="text-white/60 text-lg mb-2">
+              スコア: <span className="font-bold text-white">{score.toLocaleString()}</span>
             </p>
-            <p className="text-white/60 mt-2">結果を確認中...</p>
+            <p className="text-white/40 text-sm">結果を確認中...</p>
           </motion.div>
         </div>
       )}

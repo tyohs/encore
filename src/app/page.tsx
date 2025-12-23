@@ -25,15 +25,21 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6">
+    <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-orbs">
       {/* Logo */}
       <motion.div
         initial={{ opacity: 0, y: -30 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-12"
+        className="text-center mb-16"
       >
-        <h1 className="text-6xl font-bold gradient-text mb-2">ENCORE</h1>
-        <p className="text-white/70">みんなで盛り上がるカラオケアプリ</p>
+        <motion.h1 
+          className="text-5xl font-bold text-white mb-3"
+          animate={{ opacity: [0.8, 1, 0.8] }}
+          transition={{ repeat: Infinity, duration: 3 }}
+        >
+          ENCORE
+        </motion.h1>
+        <p className="text-white/50 text-sm tracking-wider">即席バンド形成アプリ</p>
       </motion.div>
 
       <motion.div
@@ -49,27 +55,31 @@ export default function Home() {
               onClick={() => setMode('create')}
               className="btn-primary text-center"
             >
-              🎤 ルームを作成
+              ルームを作成
             </motion.button>
             <motion.button
               whileTap={{ scale: 0.98 }}
               onClick={() => setMode('join')}
               className="btn-secondary text-center"
             >
-              🚪 ルームに参加
+              ルームに参加
             </motion.button>
           </div>
         )}
 
         {mode === 'create' && (
-          <div className="glass-card p-6">
-            <h2 className="text-xl font-bold text-white mb-4">ルームを作成</h2>
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="glass-card p-6"
+          >
+            <h2 className="text-lg font-semibold text-white mb-6 text-center">ルームを作成</h2>
             <input
               type="text"
               placeholder="あなたの名前"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="input mb-4"
+              className="input mb-6"
               maxLength={20}
             />
             <div className="flex gap-3">
@@ -82,23 +92,27 @@ export default function Home() {
               <button
                 onClick={handleCreate}
                 disabled={!name.trim()}
-                className="btn-primary flex-1 disabled:opacity-50"
+                className="btn-primary flex-1 disabled:opacity-40"
               >
                 作成
               </button>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {mode === 'join' && (
-          <div className="glass-card p-6">
-            <h2 className="text-xl font-bold text-white mb-4">ルームに参加</h2>
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="glass-card p-6"
+          >
+            <h2 className="text-lg font-semibold text-white mb-6 text-center">ルームに参加</h2>
             <input
               type="text"
               placeholder="あなたの名前"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="input mb-3"
+              className="input mb-4"
               maxLength={20}
             />
             <input
@@ -106,7 +120,7 @@ export default function Home() {
               placeholder="ルームコード"
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              className="input mb-4 uppercase tracking-widest text-center text-2xl"
+              className="input mb-6 uppercase tracking-widest text-center text-xl"
               maxLength={6}
             />
             <div className="flex gap-3">
@@ -119,34 +133,37 @@ export default function Home() {
               <button
                 onClick={handleJoin}
                 disabled={!name.trim() || !roomCode.trim()}
-                className="btn-primary flex-1 disabled:opacity-50"
+                className="btn-primary flex-1 disabled:opacity-40"
               >
                 参加
               </button>
             </div>
-          </div>
+          </motion.div>
         )}
       </motion.div>
 
-      {/* Feature highlights */}
+      {/* Feature indicators */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.5 }}
-        className="mt-16 flex gap-8 text-center"
+        className="mt-20 flex gap-12 text-center"
       >
-        <div className="text-white/60">
-          <span className="text-3xl block mb-2">🔦</span>
-          <span className="text-sm">ペンライト</span>
-        </div>
-        <div className="text-white/60">
-          <span className="text-3xl block mb-2">📢</span>
-          <span className="text-sm">コール</span>
-        </div>
-        <div className="text-white/60">
-          <span className="text-3xl block mb-2">💕</span>
-          <span className="text-sm">ファンサ</span>
-        </div>
+        {[
+          { emoji: '🥁', label: 'ドラム' },
+          { emoji: '🎸', label: 'ギター' },
+          { emoji: '🎹', label: 'キーボード' },
+        ].map((item, i) => (
+          <motion.div 
+            key={item.label}
+            className="text-white/40"
+            animate={{ y: [0, -5, 0] }}
+            transition={{ repeat: Infinity, duration: 2, delay: i * 0.3 }}
+          >
+            <span className="text-2xl block mb-2">{item.emoji}</span>
+            <span className="text-xs">{item.label}</span>
+          </motion.div>
+        ))}
       </motion.div>
     </main>
   );

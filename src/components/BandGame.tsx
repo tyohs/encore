@@ -19,6 +19,22 @@ interface NoteState extends NoteData {
   judgment?: Judgment;
 }
 
+// コール定義
+interface CallItem {
+  id: string;
+  text: string;
+  emoji: string;
+  requiredScore: number;
+  cost: number;  // 使用するとスコアがこれだけ減る（0なら無料）
+}
+
+const CALLS: CallItem[] = [
+  { id: 'yeah', text: 'イェーイ！', emoji: '🎉', requiredScore: 500, cost: 0 },
+  { id: 'fuu', text: 'フゥー！', emoji: '🔥', requiredScore: 1500, cost: 0 },
+  { id: 'saikou', text: 'サイコー！', emoji: '⭐', requiredScore: 3000, cost: 0 },
+  { id: 'encore', text: 'アンコール！', emoji: '👏', requiredScore: 5000, cost: 0 },
+];
+
 interface BandGameProps {
   chart: InstrumentChart;
   instrument: InstrumentType;
@@ -40,11 +56,11 @@ export default function BandGame({
   const [combo, setCombo] = useState(0);
   const [lastJudgment, setLastJudgment] = useState<Judgment | null>(null);
   const [showMissEffect, setShowMissEffect] = useState(false);
-  const [hitEffect, setHitEffect] = useState<{ x: number; y: number } | null>(null);
+  const [activeCall, setActiveCall] = useState<CallItem | null>(null);
+  const [usedCalls, setUsedCalls] = useState<Set<string>>(new Set());
   const animationFrameRef = useRef<number | undefined>(undefined);
   const info = INSTRUMENT_INFO[instrument];
 
-  // 初期化
   useEffect(() => {
     const initialNotes: NoteState[] = chart.notes.map((note, index) => ({
       ...note,
@@ -54,9 +70,9 @@ export default function BandGame({
     setNotes(initialNotes);
     setScore(0);
     setCombo(0);
+    setUsedCalls(new Set());
   }, [chart]);
 
-  // ゲームループ
   useEffect(() => {
     const gameLoop = () => {
       if (audioRef.current) {
@@ -80,7 +96,6 @@ export default function BandGame({
     };
   }, [audioRef, onGameEnd]);
 
-  // ミスしたノートを自動判定
   useEffect(() => {
     setNotes(prevNotes => {
       let missCount = 0;
@@ -102,12 +117,10 @@ export default function BandGame({
     });
   }, [currentTime]);
 
-  // スコア更新を親に通知
   useEffect(() => {
     onScoreUpdate(score, combo);
   }, [score, combo, onScoreUpdate]);
 
-  // ノートを叩いた時の処理
   const handleTap = useCallback((lane?: number) => {
     const targetNote = notes
       .filter(n => !n.hit)
@@ -144,40 +157,44 @@ export default function BandGame({
     setScore(prev => prev + points);
     setCombo(newCombo);
     setLastJudgment(judgment);
-    setHitEffect({ x: Math.random() * 100, y: Math.random() * 100 });
-    setTimeout(() => {
-      setLastJudgment(null);
-      setHitEffect(null);
-    }, 300);
+    setTimeout(() => setLastJudgment(null), 300);
   }, [notes, currentTime, combo, instrument]);
+
+  // コールを使用
+  const handleCall = useCallback((call: CallItem) => {
+    if (score < call.requiredScore) return;
+    if (usedCalls.has(call.id)) return; // 各コールは1回のみ使用可能
+    
+    setActiveCall(call);
+    setUsedCalls(prev => new Set([...prev, call.id]));
+    setScore(prev => Math.max(0, prev - call.cost));
+    
+    setTimeout(() => setActiveCall(null), 1500);
+  }, [score, usedCalls]);
 
   const APPROACH_TIME = 2500;
 
-  // 楽器別のUI
+  // 利用可能なコール
+  const availableCalls = CALLS.filter(call => 
+    score >= call.requiredScore && !usedCalls.has(call.id)
+  );
+
   const renderInstrumentUI = () => {
     switch (instrument) {
       case 'drums':
-        return <DrumUI onTap={handleTap} info={info} combo={combo} />;
+        return <DrumUI onTap={handleTap} />;
       case 'keyboard':
-        return <KeyboardUI onTap={handleTap} info={info} combo={combo} />;
+        return <KeyboardUI onTap={handleTap} />;
       case 'guitar':
       case 'bass':
-        return <GuitarUI onTap={handleTap} info={info} instrument={instrument} combo={combo} />;
+        return <GuitarUI onTap={handleTap} instrument={instrument} />;
       default:
         return null;
     }
   };
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900">
-      {/* Background animation */}
-      <div 
-        className="absolute inset-0 opacity-30"
-        style={{
-          background: `radial-gradient(circle at 50% 50%, ${info.color}40 0%, transparent 50%)`,
-        }}
-      />
-
+    <div className="flex flex-col h-full relative overflow-hidden bg-orbs">
       {/* Miss effect */}
       <AnimatePresence>
         {showMissEffect && (
@@ -185,67 +202,62 @@ export default function BandGame({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-red-500/40 pointer-events-none z-50"
+            className="absolute inset-0 bg-red-500/20 pointer-events-none z-50"
           />
         )}
       </AnimatePresence>
 
-      {/* Hit particles */}
+      {/* Active Call Display */}
       <AnimatePresence>
-        {hitEffect && (
+        {activeCall && (
           <motion.div
-            key={Date.now()}
-            initial={{ scale: 0, opacity: 1 }}
-            animate={{ scale: 3, opacity: 0 }}
-            exit={{ opacity: 0 }}
-            className="absolute pointer-events-none z-40"
-            style={{
-              left: `${hitEffect.x}%`,
-              top: `${hitEffect.y}%`,
-              width: 50,
-              height: 50,
-              background: `radial-gradient(circle, ${info.color} 0%, transparent 70%)`,
-            }}
-          />
+            initial={{ opacity: 0, scale: 0.5, y: 50 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 1.5, y: -50 }}
+            className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+          >
+            <div className="text-center">
+              <motion.span 
+                className="text-7xl block mb-4"
+                animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
+                transition={{ duration: 0.5 }}
+              >
+                {activeCall.emoji}
+              </motion.span>
+              <motion.span 
+                className="text-4xl font-bold text-white block"
+                style={{ textShadow: '0 0 20px rgba(168, 85, 247, 0.8)' }}
+              >
+                {activeCall.text}
+              </motion.span>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Header - super colorful */}
-      <div 
-        className="p-4 z-10"
-        style={{ background: `linear-gradient(180deg, ${info.color}30 0%, transparent 100%)` }}
-      >
-        <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="p-4 relative z-10">
+        <div className="glass-card p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <motion.span 
-              className="text-4xl p-3 rounded-2xl"
-              style={{ 
-                backgroundColor: `${info.color}40`,
-                boxShadow: `0 0 20px ${info.color}60`,
-              }}
-              animate={{ scale: [1, 1.1, 1] }}
-              transition={{ repeat: Infinity, duration: 0.5 }}
+            <div 
+              className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+              style={{ backgroundColor: `${info.color}20` }}
             >
               {info.emoji}
-            </motion.span>
+            </div>
             <div>
-              <span className="text-white font-bold text-lg">{info.label}</span>
-              <div className="text-white/60 text-sm">BPM 72</div>
+              <span className="text-white font-semibold">{info.label}</span>
+              <div className="text-white/40 text-xs">BPM 72</div>
             </div>
           </div>
           
-          {/* Combo display */}
           <div className="text-center">
-            <div className="text-white/60 text-xs">COMBO</div>
+            <div className="text-white/40 text-xs uppercase tracking-wider">Combo</div>
             <motion.div 
               key={combo}
-              initial={{ scale: 1.5, y: -10 }}
-              animate={{ scale: 1, y: 0 }}
-              className="text-4xl font-black"
-              style={{ 
-                color: combo >= 30 ? '#FFD700' : combo >= 10 ? info.color : 'white',
-                textShadow: combo >= 10 ? `0 0 20px ${info.color}` : 'none',
-              }}
+              initial={{ scale: 1.3 }}
+              animate={{ scale: 1 }}
+              className="text-3xl font-bold text-white"
             >
               {combo}
             </motion.div>
@@ -253,199 +265,207 @@ export default function BandGame({
         </div>
       </div>
 
-      {/* Score - big and flashy */}
-      <div className="text-center py-3 relative z-10">
+      {/* Score */}
+      <div className="text-center py-2 relative z-10">
+        <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Score</div>
         <motion.div 
           key={score}
-          initial={{ scale: 1.2 }}
+          initial={{ scale: 1.1 }}
           animate={{ scale: 1 }}
-          className="text-5xl font-black"
-          style={{ 
-            background: `linear-gradient(135deg, ${info.color}, #FFD700, ${info.color})`,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            textShadow: `0 0 30px ${info.color}60`,
-          }}
+          className="text-4xl font-bold gradient-text"
         >
           {score.toLocaleString()}
         </motion.div>
-        <span className="text-white/40 text-sm">SCORE</span>
       </div>
 
-      {/* Note lane area */}
-      <div className="flex-1 relative overflow-hidden">
-        {/* Notes */}
-        {notes.map(note => {
-          if (note.hit) return null;
-          
-          const timeUntilHit = note.time - currentTime;
-          if (timeUntilHit > APPROACH_TIME || timeUntilHit < -200) return null;
-
-          const progress = 1 - (timeUntilHit / APPROACH_TIME);
-          const y = progress * 60;
-          const x = instrument === 'drums' ? (note.lane || 0) * 25 + 12.5 : 50;
-          const size = note.type === 'special' ? 70 : 55;
-
-          return (
-            <motion.div
-              key={note.id}
-              className="absolute rounded-full flex items-center justify-center font-bold shadow-2xl"
-              style={{
-                left: `${x}%`,
-                top: `${y}%`,
-                width: size,
-                height: size,
-                transform: 'translate(-50%, -50%)',
-                background: note.type === 'special' 
-                  ? `linear-gradient(135deg, #FFD700, #FF6B9D, #4ECDC4)`
-                  : `linear-gradient(135deg, ${info.color}, ${info.color}CC)`,
-                boxShadow: `0 0 30px ${note.type === 'special' ? '#FFD700' : info.color}80`,
-                border: `3px solid white`,
-              }}
-              animate={note.type === 'special' ? {
-                scale: [1, 1.15, 1],
-                rotate: [0, 5, -5, 0],
-              } : {
-                scale: [1, 1.05, 1],
-              }}
-              transition={{ repeat: Infinity, duration: 0.4 }}
-            >
-              <span className="text-white text-xl">
-                {note.type === 'special' ? '💫' : '●'}
-              </span>
-            </motion.div>
-          );
-        })}
-
-        {/* Judgment line */}
-        <div 
-          className="absolute left-4 right-4 h-24 rounded-3xl flex items-center justify-center"
-          style={{ 
-            top: '60%',
-            background: `linear-gradient(180deg, ${info.color}40 0%, ${info.color}20 100%)`,
-            border: `4px solid ${info.color}`,
-            boxShadow: `0 0 40px ${info.color}60, inset 0 0 40px ${info.color}20`,
-          }}
-        >
-          <AnimatePresence>
-            {lastJudgment && (
-              <motion.div
-                key={Date.now()}
-                initial={{ opacity: 0, scale: 0.5, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, y: -30, scale: 1.5 }}
-                className="font-black text-4xl"
-                style={{
-                  color: lastJudgment === 'perfect' ? '#FFD700' :
-                         lastJudgment === 'great' ? '#FF6B9D' : '#4ECDC4',
-                  textShadow: `0 0 20px currentColor`,
-                }}
+      {/* Call Buttons */}
+      <div className="px-4 py-2 relative z-10">
+        <div className="flex gap-2 overflow-x-auto pb-2">
+          {CALLS.map(call => {
+            const isAvailable = score >= call.requiredScore && !usedCalls.has(call.id);
+            const isUsed = usedCalls.has(call.id);
+            const progress = Math.min(1, score / call.requiredScore);
+            
+            return (
+              <motion.button
+                key={call.id}
+                whileTap={isAvailable ? { scale: 0.95 } : {}}
+                onClick={() => handleCall(call)}
+                disabled={!isAvailable}
+                className={`
+                  flex-shrink-0 px-4 py-2 rounded-xl flex items-center gap-2 
+                  transition-all relative overflow-hidden
+                  ${isUsed 
+                    ? 'opacity-30 bg-white/5' 
+                    : isAvailable 
+                      ? 'bg-white/15 border border-white/30' 
+                      : 'bg-white/5 border border-white/10'
+                  }
+                `}
               >
-                {lastJudgment === 'perfect' ? '✨ PERFECT! ✨' :
-                 lastJudgment === 'great' ? '🔥 GREAT!' :
-                 'GOOD!'}
-              </motion.div>
-            )}
-          </AnimatePresence>
+                {/* Progress bar background */}
+                {!isUsed && !isAvailable && (
+                  <div 
+                    className="absolute inset-0 bg-white/10"
+                    style={{ width: `${progress * 100}%` }}
+                  />
+                )}
+                <span className="relative">{call.emoji}</span>
+                <span className={`relative text-sm ${isAvailable ? 'text-white' : 'text-white/40'}`}>
+                  {isUsed ? '済' : isAvailable ? call.text : `${call.requiredScore}`}
+                </span>
+              </motion.button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Instrument-specific UI */}
-      <div className="relative z-10">
+      {/* Note lane */}
+      <div className="flex-1 relative overflow-hidden mx-4">
+        <div className="glass-card h-full relative overflow-hidden">
+          {/* Notes */}
+          {notes.map(note => {
+            if (note.hit) return null;
+            
+            const timeUntilHit = note.time - currentTime;
+            if (timeUntilHit > APPROACH_TIME || timeUntilHit < -200) return null;
+
+            const progress = 1 - (timeUntilHit / APPROACH_TIME);
+            const y = progress * 65;
+            const x = instrument === 'drums' ? (note.lane || 0) * 25 + 12.5 : 50;
+            const size = note.type === 'special' ? 60 : 48;
+
+            return (
+              <motion.div
+                key={note.id}
+                className="absolute rounded-full flex items-center justify-center backdrop-blur-sm"
+                style={{
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  width: size,
+                  height: size,
+                  transform: 'translate(-50%, -50%)',
+                  background: note.type === 'special' 
+                    ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.8), rgba(236, 72, 153, 0.8))'
+                    : `${info.color}CC`,
+                  border: '2px solid rgba(255, 255, 255, 0.3)',
+                  boxShadow: `0 4px 20px ${info.color}40`,
+                }}
+                animate={note.type === 'special' ? { scale: [1, 1.1, 1] } : {}}
+                transition={{ repeat: Infinity, duration: 0.5 }}
+              >
+                <span className="text-white text-lg">
+                  {note.type === 'special' ? '✦' : '●'}
+                </span>
+              </motion.div>
+            );
+          })}
+
+          {/* Judgment line */}
+          <div 
+            className="absolute left-4 right-4 h-20 rounded-2xl flex items-center justify-center backdrop-blur-md"
+            style={{ 
+              top: '65%',
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '2px solid rgba(255, 255, 255, 0.2)',
+            }}
+          >
+            <AnimatePresence>
+              {lastJudgment && (
+                <motion.div
+                  key={Date.now()}
+                  initial={{ opacity: 0, scale: 0.5, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="font-bold text-2xl"
+                  style={{
+                    color: lastJudgment === 'perfect' ? '#a855f7' :
+                           lastJudgment === 'great' ? '#3b82f6' : '#22c55e',
+                  }}
+                >
+                  {lastJudgment === 'perfect' ? 'PERFECT' :
+                   lastJudgment === 'great' ? 'GREAT' : 'GOOD'}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+
+      {/* Instrument UI */}
+      <div className="p-4 relative z-10">
         {renderInstrumentUI()}
       </div>
     </div>
   );
 }
 
-// ドラムUI - 4つのパッド
-function DrumUI({ onTap, info, combo }: { onTap: (lane?: number) => void; info: typeof INSTRUMENT_INFO['drums']; combo: number }) {
+function DrumUI({ onTap }: { onTap: (lane?: number) => void }) {
   const pads = [
-    { color: '#FF6B6B', label: 'ハイハット', emoji: '🥁' },
-    { color: '#4ECDC4', label: 'スネア', emoji: '🪘' },
-    { color: '#FFE66D', label: 'タム', emoji: '🥁' },
-    { color: '#A78BFA', label: 'キック', emoji: '🦶' },
+    { label: 'HH', color: 'rgba(168, 85, 247, 0.3)' },
+    { label: 'SN', color: 'rgba(59, 130, 246, 0.3)' },
+    { label: 'TM', color: 'rgba(236, 72, 153, 0.3)' },
+    { label: 'KK', color: 'rgba(34, 197, 94, 0.3)' },
   ];
 
   return (
-    <div className="p-4 bg-black/50">
-      <div className="grid grid-cols-4 gap-2">
-        {pads.map((pad, index) => (
-          <motion.button
-            key={index}
-            whileTap={{ scale: 0.9, y: 5 }}
-            onClick={() => onTap(index)}
-            className="aspect-square rounded-2xl flex flex-col items-center justify-center font-bold shadow-lg"
-            style={{
-              background: `linear-gradient(180deg, ${pad.color} 0%, ${pad.color}80 100%)`,
-              boxShadow: `0 8px 0 ${pad.color}60, 0 0 20px ${pad.color}40`,
-            }}
-          >
-            <span className="text-3xl">{pad.emoji}</span>
-            <span className="text-xs text-white/80 mt-1">{pad.label}</span>
-          </motion.button>
-        ))}
-      </div>
+    <div className="grid grid-cols-4 gap-3">
+      {pads.map((pad, index) => (
+        <motion.button
+          key={index}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => onTap(index)}
+          className="aspect-square rounded-2xl flex items-center justify-center font-semibold text-white backdrop-blur-md"
+          style={{
+            background: pad.color,
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+          }}
+        >
+          {pad.label}
+        </motion.button>
+      ))}
     </div>
   );
 }
 
-// キーボードUI - ピアノ鍵盤風
-function KeyboardUI({ onTap, info, combo }: { onTap: (lane?: number) => void; info: typeof INSTRUMENT_INFO['keyboard']; combo: number }) {
-  const keys = ['ド', 'レ', 'ミ', 'ファ', 'ソ'];
+function KeyboardUI({ onTap }: { onTap: (lane?: number) => void }) {
+  const keys = ['C', 'D', 'E', 'F', 'G'];
 
   return (
-    <div className="p-4 bg-black/50">
-      <div className="flex gap-1">
-        {keys.map((key, index) => (
-          <motion.button
-            key={index}
-            whileTap={{ scale: 0.95, y: 5 }}
-            onClick={() => onTap(index)}
-            className="flex-1 h-28 rounded-b-xl flex items-end justify-center pb-3 font-bold text-lg"
-            style={{
-              background: 'linear-gradient(180deg, #f0f0f0 0%, #d0d0d0 100%)',
-              boxShadow: `0 8px 0 #a0a0a0, 0 12px 20px rgba(0,0,0,0.3)`,
-              color: '#333',
-            }}
-          >
-            {key}
-          </motion.button>
-        ))}
-      </div>
+    <div className="flex gap-1">
+      {keys.map((key, index) => (
+        <motion.button
+          key={index}
+          whileTap={{ scale: 0.98, y: 4 }}
+          onClick={() => onTap(index)}
+          className="flex-1 h-24 rounded-b-xl flex items-end justify-center pb-3 font-semibold text-gray-700"
+          style={{
+            background: 'linear-gradient(180deg, #ffffff 0%, #e5e7eb 100%)',
+            boxShadow: '0 4px 0 #9ca3af',
+          }}
+        >
+          {key}
+        </motion.button>
+      ))}
     </div>
   );
 }
 
-// ギター/ベースUI - ストラム風
-function GuitarUI({ onTap, info, instrument, combo }: { onTap: (lane?: number) => void; info: typeof INSTRUMENT_INFO['guitar']; instrument: InstrumentType; combo: number }) {
-  const strings = instrument === 'bass' ? 4 : 6;
+function GuitarUI({ onTap, instrument }: { onTap: (lane?: number) => void; instrument: InstrumentType }) {
+  const info = INSTRUMENT_INFO[instrument];
 
   return (
-    <div className="p-4 bg-black/50">
-      <motion.button
-        whileTap={{ scale: 0.95 }}
-        onClick={() => onTap()}
-        className="w-full py-8 rounded-2xl flex flex-col items-center justify-center font-bold"
-        style={{
-          background: `linear-gradient(180deg, ${info.color} 0%, ${info.color}80 100%)`,
-          boxShadow: `0 8px 0 ${info.color}60, 0 0 30px ${info.color}40`,
-        }}
-      >
-        {/* Strings visualization */}
-        <div className="w-full px-8 mb-3">
-          {Array.from({ length: strings }).map((_, i) => (
-            <motion.div
-              key={i}
-              className="h-0.5 bg-white/60 my-1.5 rounded-full"
-              animate={{ scaleX: [1, 1.02, 1] }}
-              transition={{ repeat: Infinity, duration: 0.3, delay: i * 0.1 }}
-            />
-          ))}
-        </div>
-        <span className="text-3xl">{info.emoji}</span>
-        <span className="text-white text-xl mt-2">タップでストラム！</span>
-      </motion.button>
-    </div>
+    <motion.button
+      whileTap={{ scale: 0.98 }}
+      onClick={() => onTap()}
+      className="w-full py-10 rounded-2xl flex flex-col items-center justify-center backdrop-blur-md"
+      style={{
+        background: `${info.color}20`,
+        border: '1px solid rgba(255, 255, 255, 0.2)',
+      }}
+    >
+      <span className="text-4xl mb-2">{info.emoji}</span>
+      <span className="text-white/60 text-sm">タップで演奏</span>
+    </motion.button>
   );
 }

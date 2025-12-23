@@ -15,7 +15,6 @@ export default function RoomPage() {
   const { room, currentUser, startGame } = useGameStore();
   const [selectedMode, setSelectedMode] = useState<GameMode | null>(null);
 
-  // Mock participants for demo
   const mockParticipants = room?.participants || [
     { id: '1', name: currentUser?.name || 'You', role: 'audience', isHost: currentUser?.isHost },
   ];
@@ -32,109 +31,115 @@ export default function RoomPage() {
   };
 
   return (
-    <main className="min-h-screen flex flex-col items-center p-6">
-      {/* Header */}
+    <main className="min-h-screen flex flex-col items-center p-6 bg-orbs">
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
-        <div className="text-center mb-6">
-          <p className="text-white/60 text-sm mb-1">ルームコード</p>
+        {/* Room Code */}
+        <div className="text-center mb-8">
+          <p className="text-white/40 text-xs uppercase tracking-wider mb-2">ルームコード</p>
           <h1 className="text-4xl font-bold text-white tracking-widest">{roomId}</h1>
         </div>
 
         {/* Participants */}
-        <div className="glass-card p-4 mb-6">
-          <h2 className="text-white font-bold mb-3 flex items-center gap-2">
-            👥 参加者 ({mockParticipants.length})
-          </h2>
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="glass-card p-5 mb-6"
+        >
+          <h2 className="text-white/60 text-xs uppercase tracking-wider mb-4">参加者</h2>
           <div className="space-y-2">
             {mockParticipants.map((p, i) => (
               <div 
                 key={p.id || i}
-                className="flex items-center justify-between p-2 bg-white/5 rounded-lg"
+                className="flex items-center justify-between p-3 bg-white/5 rounded-xl"
               >
-                <span className="text-white">
-                  {p.name} {p.isHost && '👑'}
+                <span className="text-white text-sm">
+                  {p.name} {p.isHost && <span className="text-amber-400">👑</span>}
                 </span>
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
 
         {/* Mode Selection */}
-        <div className="glass-card p-4 mb-6">
-          <h2 className="text-white font-bold mb-4">🎮 モードを選択</h2>
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="glass-card p-5 mb-6"
+        >
+          <h2 className="text-white/60 text-xs uppercase tracking-wider mb-4">モード選択</h2>
           
-          {/* Band Mode - メイン */}
+          {/* Band Mode */}
           <motion.button
             whileTap={{ scale: 0.98 }}
             onClick={() => setSelectedMode('band')}
-            className={`w-full p-5 rounded-xl border-2 transition-all mb-3 ${
+            className={`w-full p-5 rounded-xl text-left transition-all mb-3 backdrop-blur-md ${
               selectedMode === 'band'
-                ? 'bg-gradient-to-r from-pink-500/30 to-purple-500/30 border-pink-400'
-                : 'bg-white/5 border-white/20 hover:border-white/40'
+                ? 'bg-white/15 border border-white/30'
+                : 'bg-white/5 border border-white/10 hover:bg-white/10'
             }`}
           >
             <div className="flex items-center gap-4">
-              <span className="text-4xl">🎸</span>
-              <div className="text-left">
-                <span className="text-white font-bold text-lg block">即席バンド</span>
-                <p className="text-white/60 text-sm">楽器を選んでバンド演奏！</p>
+              <div className="text-3xl">🎸</div>
+              <div className="flex-1">
+                <span className="text-white font-semibold block">即席バンド</span>
+                <p className="text-white/50 text-sm">楽器を選んで演奏</p>
               </div>
-              <span className="ml-auto text-2xl">🥁🎹</span>
+              <div className="text-xl opacity-50">🥁🎹</div>
             </div>
           </motion.button>
 
           {/* Other modes */}
-          <div className="flex gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <motion.button
               whileTap={{ scale: 0.98 }}
               onClick={() => setSelectedMode('singer')}
-              className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+              className={`p-4 rounded-xl text-center transition-all backdrop-blur-md ${
                 selectedMode === 'singer'
-                  ? 'bg-pink-500/30 border-pink-400'
-                  : 'bg-white/5 border-white/20 hover:border-white/40'
+                  ? 'bg-white/15 border border-white/30'
+                  : 'bg-white/5 border border-white/10 hover:bg-white/10'
               }`}
             >
-              <span className="text-3xl block mb-2">🎤</span>
-              <span className="text-white font-bold">シンガー</span>
-              <p className="text-white/60 text-xs mt-1">歌う人</p>
+              <span className="text-2xl block mb-2">🎤</span>
+              <span className="text-white text-sm font-medium">シンガー</span>
             </motion.button>
             
             <motion.button
               whileTap={{ scale: 0.98 }}
               onClick={() => setSelectedMode('audience')}
-              className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+              className={`p-4 rounded-xl text-center transition-all backdrop-blur-md ${
                 selectedMode === 'audience'
-                  ? 'bg-blue-500/30 border-blue-400'
-                  : 'bg-white/5 border-white/20 hover:border-white/40'
+                  ? 'bg-white/15 border border-white/30'
+                  : 'bg-white/5 border border-white/10 hover:bg-white/10'
               }`}
             >
-              <span className="text-3xl block mb-2">🔦</span>
-              <span className="text-white font-bold">応援</span>
-              <p className="text-white/60 text-xs mt-1">ペンライト振り</p>
+              <span className="text-2xl block mb-2">🔦</span>
+              <span className="text-white text-sm font-medium">応援</span>
             </motion.button>
           </div>
-        </div>
+        </motion.div>
 
         {/* Start Button */}
         <motion.button
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
           whileTap={{ scale: 0.98 }}
           onClick={handleStart}
           disabled={!selectedMode}
-          className="btn-primary w-full disabled:opacity-50"
+          className="btn-primary w-full disabled:opacity-40"
         >
-          {selectedMode === 'band' ? '🎸 バンドスタート！' : 
-           selectedMode === 'singer' ? '🎤 ライブスタート！' :
-           selectedMode === 'audience' ? '🔦 応援スタート！' :
-           'モードを選んでください'}
+          {selectedMode ? '開始する' : 'モードを選択してください'}
         </motion.button>
 
-        {/* Share hint */}
-        <p className="text-center text-white/40 text-sm mt-6">
-          ルームコードを友達にシェアしよう！
+        {/* Hint */}
+        <p className="text-center text-white/30 text-xs mt-6">
+          ルームコードを共有して友達を招待
         </p>
       </motion.div>
     </main>
