@@ -12,6 +12,7 @@ import {
   BASE_POINTS,
   getComboMultiplier,
 } from '@/data/charts';
+import { useRoomStore } from '@/store/roomStore';
 
 interface NoteState extends NoteData {
   id: number;
@@ -19,7 +20,7 @@ interface NoteState extends NoteData {
   judgment?: Judgment;
 }
 
-// コール定義 - スコア消費型
+// 通常コール
 interface CallItem {
   id: string;
   text: string;
@@ -27,11 +28,27 @@ interface CallItem {
   cost: number;
 }
 
+// 歌手へのリクエスト（高コスト）
+interface RequestItem {
+  id: string;
+  text: string;
+  emoji: string;
+  cost: number;
+  cooldown: number; // クールダウン（ms）
+}
+
 const CALLS: CallItem[] = [
-  { id: 'yeah', text: 'イェーイ！', emoji: '🎉', cost: 300 },
-  { id: 'fuu', text: 'フゥー！', emoji: '🔥', cost: 500 },
-  { id: 'saikou', text: 'サイコー！', emoji: '⭐', cost: 800 },
-  { id: 'encore', text: 'アンコール！', emoji: '👏', cost: 1000 },
+  { id: 'yeah', text: 'イェーイ！', emoji: '🎉', cost: 200 },
+  { id: 'fuu', text: 'フゥー！', emoji: '🔥', cost: 300 },
+  { id: 'kawaii', text: 'かわいい！', emoji: '💖', cost: 300 },
+  { id: 'saikou', text: 'サイコー！', emoji: '⭐', cost: 500 },
+];
+
+const REQUESTS: RequestItem[] = [
+  { id: 'wave', text: '手を振って！', emoji: '👋', cost: 1500, cooldown: 30000 },
+  { id: 'peace', text: 'ピース！', emoji: '✌️', cost: 2000, cooldown: 30000 },
+  { id: 'heart', text: 'ハート作って！', emoji: '🫶', cost: 2500, cooldown: 30000 },
+  { id: 'wink', text: 'ウィンクして！', emoji: '😘', cost: 3000, cooldown: 30000 },
 ];
 
 // 振動フィードバック
@@ -41,18 +58,11 @@ function vibrate(pattern: number | number[]) {
   }
 }
 
-// 楽器別レーン数
-const LANE_CONFIG: Record<InstrumentType, number> = {
-  drums: 4,     // HH, SN, TM, KK
-  guitar: 3,    // 左、中、右
-  keyboard: 5,  // ドレミファソ
-  bass: 2,      // 低、高
-};
-
 interface BandGameProps {
   chart: InstrumentChart;
   instrument: InstrumentType;
   audioRef: React.RefObject<HTMLAudioElement | null>;
+  mvUrl?: string | null;
   onScoreUpdate: (score: number, combo: number) => void;
   onGameEnd?: () => void;
 }
@@ -61,6 +71,7 @@ export default function BandGame({
   chart, 
   instrument, 
   audioRef,
+  mvUrl,
   onScoreUpdate,
   onGameEnd 
 }: BandGameProps) {
@@ -72,14 +83,15 @@ export default function BandGame({
   const [maxCombo, setMaxCombo] = useState(0);
   const [lastJudgment, setLastJudgment] = useState<Judgment | null>(null);
   const [showMissEffect, setShowMissEffect] = useState(false);
-  const [activeCall, setActiveCall] = useState<CallItem | null>(null);
-  const [hitEffect, setHitEffect] = useState<{x: number, y: number} | null>(null);
+  const [activeCall, setActiveCall] = useState<CallItem | RequestItem | null>(null);
+  const [hitEffect, setHitEffect] = useState<{x: number, y: number, isSpecial: boolean} | null>(null);
+  const [selectedCallIndex, setSelectedCallIndex] = useState(0);
   const [swipeStartY, setSwipeStartY] = useState<number | null>(null);
-  const [callIndex, setCallIndex] = useState(0);
+  const [requestCooldowns, setRequestCooldowns] = useState<Record<string, number>>({});
   const animationFrameRef = useRef<number | undefined>(undefined);
   const laneRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const info = INSTRUMENT_INFO[instrument];
-  const laneCount = LANE_CONFIG[instrument];
 
   useEffect(() => {
     const initialNotes: NoteState[] = chart.notes.map((note, index) => ({
@@ -100,6 +112,14 @@ export default function BandGame({
         const time = audioRef.current.currentTime * 1000;
         setCurrentTime(time);
 
+        // Sync video with audio
+        if (videoRef.current && mvUrl) {
+          const diff = Math.abs(videoRef.current.currentTime - audioRef.current.currentTime);
+          if (diff > 0.1) {
+            videoRef.current.currentTime = audioRef.current.currentTime;
+          }
+        }
+
         if (audioRef.current.ended) {
           onGameEnd?.();
           return;
@@ -115,7 +135,24 @@ export default function BandGame({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [audioRef, onGameEnd]);
+  }, [audioRef, onGameEnd, mvUrl]);
+
+  // クールダウン更新
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRequestCooldowns(prev => {
+        const now = Date.now();
+        const updated: Record<string, number> = {};
+        for (const [id, endTime] of Object.entries(prev)) {
+          if (endTime > now) {
+            updated[id] = endTime;
+          }
+        }
+        return updated;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     setNotes(prevNotes => {
@@ -131,7 +168,7 @@ export default function BandGame({
       if (missCount > 0) {
         setCombo(0);
         setShowMissEffect(true);
-        vibrate(100); // ミス時の振動
+        vibrate(100);
         setTimeout(() => setShowMissEffect(false), 200);
       }
 
@@ -148,18 +185,6 @@ export default function BandGame({
       setMaxCombo(combo);
     }
   }, [combo, maxCombo]);
-
-  // ノートのX位置を計算（楽器別）
-  const getNoteX = useCallback((note: NoteState) => {
-    const lane = note.lane ?? 0;
-    const padding = 15; // 左右の余白 %
-    const usableWidth = 100 - padding * 2;
-    
-    if (laneCount === 1) return 50;
-    
-    const laneWidth = usableWidth / laneCount;
-    return padding + laneWidth * lane + laneWidth / 2;
-  }, [laneCount]);
 
   // ノートをタップ
   const handleTap = useCallback((e?: React.TouchEvent | React.MouseEvent) => {
@@ -179,13 +204,13 @@ export default function BandGame({
 
     if (diff <= JUDGMENT_WINDOWS.perfect) {
       judgment = 'perfect';
-      vibrate(30); // PERFECT: 短い振動
+      vibrate(targetNote.type === 'special' ? [50, 30, 50, 30, 50] : 30);
     } else if (diff <= JUDGMENT_WINDOWS.great) {
       judgment = 'great';
-      vibrate(20); // GREAT: より短い振動
+      vibrate(targetNote.type === 'special' ? [40, 20, 40] : 20);
     } else {
       judgment = 'good';
-      vibrate(10); // GOOD: 最短の振動
+      vibrate(10);
     }
 
     const basePoints = BASE_POINTS[targetNote.type];
@@ -202,7 +227,6 @@ export default function BandGame({
     setCombo(newCombo);
     setLastJudgment(judgment);
     
-    // ヒットエフェクト
     if (e && laneRef.current) {
       const rect = laneRef.current.getBoundingClientRect();
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
@@ -210,82 +234,99 @@ export default function BandGame({
       setHitEffect({
         x: ((clientX - rect.left) / rect.width) * 100,
         y: ((clientY - rect.top) / rect.height) * 100,
+        isSpecial: targetNote.type === 'special',
       });
     }
     
     setTimeout(() => {
       setLastJudgment(null);
       setHitEffect(null);
-    }, 300);
+    }, targetNote.type === 'special' ? 600 : 300);
   }, [notes, currentTime, combo]);
 
-  // スワイプ開始
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     setSwipeStartY(e.touches[0].clientY);
     handleTap(e);
   }, [handleTap]);
 
-  // スワイプ終了 - 上スワイプでコール
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     if (swipeStartY !== null) {
       const endY = e.changedTouches[0].clientY;
       const swipeDistance = swipeStartY - endY;
       
-      // 上方向に50px以上スワイプでコール発動
       if (swipeDistance > 50) {
-        const availableCalls = CALLS.filter(c => score >= c.cost);
-        if (availableCalls.length > 0) {
-          const call = availableCalls[callIndex % availableCalls.length];
-          handleCall(call);
-          setCallIndex(prev => prev + 1);
+        const selectedCall = CALLS[selectedCallIndex];
+        if (score >= selectedCall.cost) {
+          handleCall(selectedCall);
         }
       }
     }
     setSwipeStartY(null);
-  }, [swipeStartY, score, callIndex]);
+  }, [swipeStartY, score, selectedCallIndex]);
 
-  // コールを使用
   const handleCall = useCallback((call: CallItem) => {
     if (score < call.cost) return;
     
     setActiveCall(call);
     setScore(prev => Math.max(0, prev - call.cost));
-    vibrate([50, 30, 50]); // コール時のパターン振動
+    vibrate([50, 30, 50]);
+    
+    // Broadcast to other players
+    useRoomStore.getState().broadcastCall(call.text, call.emoji);
     
     setTimeout(() => setActiveCall(null), 1200);
   }, [score]);
 
-  const APPROACH_TIME = 2000;
+  const handleRequest = useCallback((request: RequestItem) => {
+    if (score < request.cost) return;
+    if (requestCooldowns[request.id]) return;
+    
+    setActiveCall(request);
+    setScore(prev => Math.max(0, prev - request.cost));
+    setRequestCooldowns(prev => ({
+      ...prev,
+      [request.id]: Date.now() + request.cooldown,
+    }));
+    vibrate([100, 50, 100, 50, 100]);
+    
+    // Broadcast request to singer
+    useRoomStore.getState().broadcastRequest(request.text, request.emoji);
+    
+    setTimeout(() => setActiveCall(null), 2000);
+  }, [score, requestCooldowns]);
 
-  // レーン区切り線を描画
-  const renderLaneLines = () => {
-    if (laneCount <= 1) return null;
-    
-    const lines = [];
-    const padding = 15;
-    const usableWidth = 100 - padding * 2;
-    const laneWidth = usableWidth / laneCount;
-    
-    for (let i = 1; i < laneCount; i++) {
-      const x = padding + laneWidth * i;
-      lines.push(
-        <div
-          key={i}
-          className="absolute top-0 bottom-0 w-px"
-          style={{
-            left: `${x}%`,
-            background: 'linear-gradient(180deg, transparent, rgba(255,255,255,0.1), transparent)',
-          }}
-        />
-      );
-    }
-    return lines;
-  };
+  const selectCall = useCallback((index: number) => {
+    setSelectedCallIndex(index);
+  }, []);
+
+  const APPROACH_TIME = 2000;
+  const selectedCall = CALLS[selectedCallIndex];
+  const canUseSelectedCall = score >= selectedCall.cost;
 
   return (
     <div className="flex flex-col h-full relative overflow-hidden">
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-purple-900/50 via-gray-900 to-gray-900" />
+      {/* Video Background Layer */}
+      {mvUrl && (
+        <video
+          ref={videoRef}
+          src={mvUrl}
+          className="absolute inset-0 w-full h-full object-cover z-0"
+          muted
+          playsInline
+          autoPlay
+          style={{ opacity: 0.5 }}
+        />
+      )}
+      
+      {/* Dark overlay for video */}
+      {mvUrl && (
+        <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/70 to-gray-900/40 z-[1]" />
+      )}
+      
+      {/* Default background (when no video) */}
+      {!mvUrl && (
+        <div className="absolute inset-0 bg-gradient-to-b from-purple-900/50 via-gray-900 to-gray-900" />
+      )}
       
       {/* Miss effect */}
       <AnimatePresence>
@@ -299,7 +340,49 @@ export default function BandGame({
         )}
       </AnimatePresence>
 
-      {/* Active Call Display */}
+      {/* Special hit effect - full screen */}
+      <AnimatePresence>
+        {hitEffect?.isSpecial && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 0.6, 0] }}
+              transition={{ duration: 0.5 }}
+              className="absolute inset-0 pointer-events-none z-40"
+              style={{
+                background: 'radial-gradient(circle at center, rgba(255,200,0,0.5) 0%, transparent 70%)',
+              }}
+            />
+            {/* Particles */}
+            {[...Array(12)].map((_, i) => (
+              <motion.div
+                key={i}
+                initial={{ 
+                  x: '50%', 
+                  y: '85%',
+                  scale: 0,
+                  opacity: 1,
+                }}
+                animate={{ 
+                  x: `${50 + (Math.random() - 0.5) * 80}%`,
+                  y: `${85 - Math.random() * 60}%`,
+                  scale: [0, 1.5, 0],
+                  opacity: [1, 1, 0],
+                }}
+                transition={{ duration: 0.6, ease: 'easeOut' }}
+                className="absolute w-4 h-4 pointer-events-none z-50"
+                style={{
+                  background: ['#fbbf24', '#f97316', '#ec4899', '#a855f7'][i % 4],
+                  borderRadius: i % 2 === 0 ? '50%' : '0',
+                  transform: `rotate(${i * 30}deg)`,
+                }}
+              />
+            ))}
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Active Call/Request Display */}
       <AnimatePresence>
         {activeCall && (
           <motion.div
@@ -311,7 +394,7 @@ export default function BandGame({
             <div className="text-center">
               <motion.span 
                 className="text-8xl block mb-2"
-                animate={{ rotate: [0, -10, 10, 0] }}
+                animate={{ rotate: [0, -10, 10, 0], scale: [1, 1.2, 1] }}
                 transition={{ duration: 0.3 }}
               >
                 {activeCall.emoji}
@@ -322,6 +405,9 @@ export default function BandGame({
               >
                 {activeCall.text}
               </span>
+              {'cooldown' in activeCall && (
+                <div className="mt-2 text-yellow-400 text-sm">→ 歌手にリクエスト送信！</div>
+              )}
             </div>
           </motion.div>
         )}
@@ -365,152 +451,207 @@ export default function BandGame({
         </div>
       </div>
 
-      {/* Swipe hint */}
-      <div className="relative z-20 text-center pb-2">
-        <span className="text-white/30 text-xs">↑ 上スワイプでコール</span>
-      </div>
-
-      {/* Main Lane Area */}
-      <div 
-        ref={laneRef}
-        className="flex-1 relative cursor-pointer select-none"
-        onClick={handleTap}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        style={{
-          perspective: '800px',
-          perspectiveOrigin: '50% 0%',
-        }}
-      >
-        {/* Lane background */}
-        <div 
-          className="absolute inset-x-0 top-0 bottom-0 mx-auto"
-          style={{
-            width: '90%',
-            background: 'linear-gradient(180deg, rgba(168, 85, 247, 0.1) 0%, rgba(59, 130, 246, 0.2) 100%)',
-            transform: 'rotateX(60deg)',
-            transformOrigin: 'center bottom',
-            borderLeft: '2px solid rgba(255,255,255,0.1)',
-            borderRight: '2px solid rgba(255,255,255,0.1)',
-          }}
-        />
-
-        {/* Lane dividers */}
-        {renderLaneLines()}
-
-        {/* Hit effect */}
-        <AnimatePresence>
-          {hitEffect && (
-            <motion.div
-              initial={{ scale: 0, opacity: 1 }}
-              animate={{ scale: 3, opacity: 0 }}
-              exit={{ opacity: 0 }}
-              className="absolute w-20 h-20 rounded-full pointer-events-none"
-              style={{
-                left: `${hitEffect.x}%`,
-                top: `${hitEffect.y}%`,
-                transform: 'translate(-50%, -50%)',
-                background: `radial-gradient(circle, ${info.color} 0%, transparent 70%)`,
-              }}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* Notes */}
-        {notes.map(note => {
-          if (note.hit) return null;
-          
-          const timeUntilHit = note.time - currentTime;
-          if (timeUntilHit > APPROACH_TIME || timeUntilHit < -200) return null;
-
-          const progress = 1 - (timeUntilHit / APPROACH_TIME);
-          const y = 10 + progress * 75;
-          const x = getNoteX(note);
-          const scale = 0.3 + progress * 0.7;
-          const size = (note.type === 'special' ? 70 : 55) * scale;
-
-          return (
-            <motion.div
-              key={note.id}
-              className="absolute rounded-lg flex items-center justify-center"
-              style={{
-                left: `${x}%`,
-                top: `${y}%`,
-                width: size,
-                height: size * 0.4,
-                transform: 'translate(-50%, -50%)',
-                background: note.type === 'special' 
-                  ? 'linear-gradient(90deg, #a855f7, #ec4899, #f97316)'
-                  : `linear-gradient(90deg, ${info.color}, ${info.color}CC)`,
-                boxShadow: `0 0 ${20 * scale}px ${info.color}80`,
-                opacity: 0.3 + progress * 0.7,
-              }}
-            >
-              {note.type === 'special' && (
-                <span className="text-white text-sm">★</span>
-              )}
-            </motion.div>
-          );
-        })}
-
-        {/* Judgment Line */}
-        <div 
-          className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center"
-          style={{
-            top: '85%',
-            width: '90%',
-            height: '40px',
-            background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.5), transparent)',
-            borderTop: '3px solid rgba(168, 85, 247, 0.8)',
-            boxShadow: '0 0 30px rgba(168, 85, 247, 0.5)',
-          }}
-        >
-          <AnimatePresence>
-            {lastJudgment && (
-              <motion.div
-                initial={{ opacity: 0, y: 20, scale: 0.5 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -30 }}
-                className="absolute -top-12 font-bold text-2xl"
+      {/* Main Game Area */}
+      <div className="flex-1 flex relative">
+        {/* Left - Calls */}
+        <div className="w-20 flex flex-col justify-center gap-3 p-2 z-20">
+          <div className="text-white/50 text-xs text-center mb-1">コール</div>
+          {CALLS.map((call, index) => {
+            const isSelected = selectedCallIndex === index;
+            const canUse = score >= call.cost;
+            return (
+              <motion.button
+                key={call.id}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  selectCall(index);
+                  if (canUse) handleCall(call);
+                }}
+                className={`
+                  aspect-square rounded-xl flex flex-col items-center justify-center
+                  transition-all min-h-[56px]
+                  ${isSelected ? 'ring-2 ring-white' : ''}
+                  ${canUse ? 'opacity-100' : 'opacity-40'}
+                `}
                 style={{
-                  color: lastJudgment === 'perfect' ? '#fbbf24' :
-                         lastJudgment === 'great' ? '#a855f7' : '#22c55e',
-                  textShadow: '0 0 20px currentColor',
+                  background: isSelected ? `${info.color}50` : 'rgba(255,255,255,0.1)',
                 }}
               >
-                {lastJudgment.toUpperCase()}
-              </motion.div>
+                <span className="text-2xl">{call.emoji}</span>
+                <span className="text-white/60 text-xs">{call.cost}</span>
+              </motion.button>
+            );
+          })}
+        </div>
+
+        {/* Center Lane */}
+        <div 
+          ref={laneRef}
+          className="flex-1 relative cursor-pointer select-none"
+          onClick={handleTap}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div 
+            className="absolute inset-x-4 top-0 bottom-0 rounded-2xl"
+            style={{
+              background: 'linear-gradient(180deg, rgba(168, 85, 247, 0.1) 0%, rgba(59, 130, 246, 0.2) 100%)',
+              border: '2px solid rgba(255,255,255,0.1)',
+            }}
+          />
+
+          {/* Normal Hit effect */}
+          <AnimatePresence>
+            {hitEffect && !hitEffect.isSpecial && (
+              <motion.div
+                initial={{ scale: 0, opacity: 1 }}
+                animate={{ scale: 2.5, opacity: 0 }}
+                exit={{ opacity: 0 }}
+                className="absolute w-16 h-16 rounded-full pointer-events-none"
+                style={{
+                  left: `${hitEffect.x}%`,
+                  top: `${hitEffect.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                  background: `radial-gradient(circle, ${info.color} 0%, transparent 70%)`,
+                }}
+              />
             )}
           </AnimatePresence>
+
+          {/* Notes - 幅を1/4に縮小 */}
+          {notes.map(note => {
+            if (note.hit) return null;
+            
+            const timeUntilHit = note.time - currentTime;
+            if (timeUntilHit > APPROACH_TIME || timeUntilHit < -200) return null;
+
+            const progress = 1 - (timeUntilHit / APPROACH_TIME);
+            const y = 5 + progress * 80;
+            const scale = 0.4 + progress * 0.6;
+            // 幅を大幅に縮小（約20%幅）
+            const width = (note.type === 'special' ? 22 : 18) * scale;
+            const height = (note.type === 'special' ? 22 : 16) * scale;
+
+            return (
+              <motion.div
+                key={note.id}
+                className="absolute left-1/2 rounded-lg flex items-center justify-center"
+                style={{
+                  top: `${y}%`,
+                  width: `${width}%`,
+                  height: height,
+                  transform: 'translateX(-50%)',
+                  background: note.type === 'special' 
+                    ? 'linear-gradient(135deg, #fbbf24, #f97316, #ec4899)'
+                    : `${info.color}`,
+                  boxShadow: note.type === 'special'
+                    ? `0 0 ${25 * scale}px rgba(251, 191, 36, 0.8)`
+                    : `0 0 ${15 * scale}px ${info.color}60`,
+                  opacity: 0.5 + progress * 0.5,
+                  border: note.type === 'special' ? '2px solid rgba(255,255,255,0.5)' : 'none',
+                }}
+                animate={note.type === 'special' ? { scale: [1, 1.1, 1] } : {}}
+                transition={{ repeat: Infinity, duration: 0.5 }}
+              >
+                {note.type === 'special' && (
+                  <span className="text-white text-xs font-bold">★</span>
+                )}
+              </motion.div>
+            );
+          })}
+
+          {/* Judgment Line */}
+          <div 
+            className="absolute left-4 right-4 flex items-center justify-center rounded-xl"
+            style={{
+              top: '85%',
+              height: '40px',
+              background: 'linear-gradient(90deg, transparent 5%, rgba(168, 85, 247, 0.4) 50%, transparent 95%)',
+              borderTop: '3px solid rgba(168, 85, 247, 0.8)',
+              boxShadow: '0 0 30px rgba(168, 85, 247, 0.5)',
+            }}
+          >
+            <AnimatePresence>
+              {lastJudgment && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20, scale: 0.5 }}
+                  animate={{ opacity: 1, y: 0, scale: hitEffect?.isSpecial ? 1.5 : 1.2 }}
+                  exit={{ opacity: 0, y: -30 }}
+                  className="absolute -top-14 font-bold text-3xl"
+                  style={{
+                    color: lastJudgment === 'perfect' ? '#fbbf24' :
+                           lastJudgment === 'great' ? '#a855f7' : '#22c55e',
+                    textShadow: hitEffect?.isSpecial 
+                      ? '0 0 30px currentColor, 0 0 60px currentColor'
+                      : '0 0 20px currentColor',
+                  }}
+                >
+                  {lastJudgment.toUpperCase()}
+                  {hitEffect?.isSpecial && ' ✨'}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-white/30 text-xs">
+            ↑ 上スワイプでコール
+          </div>
         </div>
 
-        {/* Tap hint */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/30 text-sm">
-          画面をタップ
+        {/* Right - Requests */}
+        <div className="w-20 flex flex-col justify-center gap-3 p-2 z-20">
+          <div className="text-yellow-400/70 text-xs text-center mb-1">リクエスト</div>
+          {REQUESTS.map(request => {
+            const canUse = score >= request.cost;
+            const onCooldown = !!requestCooldowns[request.id];
+            const cooldownRemaining = onCooldown 
+              ? Math.ceil((requestCooldowns[request.id] - Date.now()) / 1000)
+              : 0;
+            
+            return (
+              <motion.button
+                key={request.id}
+                whileTap={canUse && !onCooldown ? { scale: 0.9 } : {}}
+                onClick={() => handleRequest(request)}
+                disabled={!canUse || onCooldown}
+                className={`
+                  aspect-square rounded-xl flex flex-col items-center justify-center relative
+                  transition-all min-h-[56px]
+                  ${canUse && !onCooldown ? 'opacity-100' : 'opacity-40'}
+                `}
+                style={{
+                  background: onCooldown 
+                    ? 'rgba(100,100,100,0.3)' 
+                    : canUse 
+                      ? 'rgba(251,191,36,0.3)' 
+                      : 'rgba(255,255,255,0.1)',
+                  border: canUse && !onCooldown ? '2px solid rgba(251,191,36,0.5)' : 'none',
+                }}
+              >
+                <span className="text-2xl">{request.emoji}</span>
+                {onCooldown ? (
+                  <span className="text-white/80 text-sm font-bold">{cooldownRemaining}s</span>
+                ) : (
+                  <span className="text-yellow-400/80 text-xs">{request.cost}</span>
+                )}
+              </motion.button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Score indicator for calls */}
-      <div className="relative z-20 p-3 bg-black/50 backdrop-blur-md">
-        <div className="flex items-center justify-between">
-          <div className="flex gap-1">
-            {CALLS.map(call => (
-              <div
-                key={call.id}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm
-                  ${score >= call.cost ? 'opacity-100' : 'opacity-30'}
-                `}
-                style={{ 
-                  background: score >= call.cost ? `${info.color}50` : 'rgba(255,255,255,0.1)',
-                }}
-              >
-                {call.emoji}
-              </div>
-            ))}
+      {/* Bottom bar */}
+      <div className="relative z-20 p-2 bg-black/50 backdrop-blur-md">
+        <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center gap-1">
+            <span className="text-lg">{selectedCall.emoji}</span>
+            <span className="text-white/60 text-xs">{selectedCall.text}</span>
           </div>
-          <div className="text-right">
-            <span className="text-white/40 text-xs">コールポイント: </span>
-            <span className="text-purple-400 font-bold">{score.toLocaleString()}</span>
+          <div>
+            <span className="text-white/40 text-xs">PT: </span>
+            <span className={`font-bold ${canUseSelectedCall ? 'text-purple-400' : 'text-white/40'}`}>
+              {score.toLocaleString()}
+            </span>
           </div>
         </div>
       </div>

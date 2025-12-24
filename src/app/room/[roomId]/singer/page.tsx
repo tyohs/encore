@@ -4,23 +4,20 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, useParams } from 'next/navigation';
 import { useGameStore } from '@/store/gameStore';
+import { useRoomStore, SyncEvent } from '@/store/roomStore';
 import ExcitementGauge from '@/components/ExcitementGauge';
 import LyricsDisplay from '@/components/LyricsDisplay';
 import { FansaRequestDisplay } from '@/components/FansaButton';
 import { FansaType } from '@/types';
 import { SONGS, Song } from '@/data/songs';
 
-const MOCK_FANSA_SEQUENCE: { type: FansaType; fromName: string; delay: number }[] = [
-  { type: 'wave', fromName: 'ヒカル', delay: 8000 },
-  { type: 'peace', fromName: 'ミク', delay: 18000 },
-  { type: 'heart', fromName: 'タクヤ', delay: 30000 },
-];
-
 interface FansaRequestState {
   type: FansaType;
   fromName: string;
   completed: boolean;
   id: string;
+  emoji?: string;
+  text?: string;
 }
 
 type GamePhase = 'song-select' | 'ready' | 'countdown' | 'playing';
@@ -31,6 +28,7 @@ export default function SingerPage() {
   const roomId = params.roomId as string;
   
   const { room, updateExcitement, endGame: endGameStore } = useGameStore();
+  const { initRoom, activeRequests, activeCalls, clearRequest } = useRoomStore();
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const [phase, setPhase] = useState<GamePhase>('song-select');
@@ -40,6 +38,43 @@ export default function SingerPage() {
   const [fansaRequests, setFansaRequests] = useState<FansaRequestState[]>([]);
   const [audienceCount] = useState(3 + Math.floor(Math.random() * 3));
   const [completedCount, setCompletedCount] = useState(0);
+  const [showCallEffect, setShowCallEffect] = useState<SyncEvent | null>(null);
+
+  // Initialize room connection
+  useEffect(() => {
+    initRoom(roomId, 'シンガー', 'singer');
+  }, [roomId, initRoom]);
+
+  // Handle incoming requests from band members
+  useEffect(() => {
+    activeRequests.forEach(request => {
+      const existingIds = fansaRequests.map(r => r.id);
+      const newId = `sync-${request.timestamp}`;
+      
+      if (!existingIds.includes(newId)) {
+        setFansaRequests(prev => [...prev, {
+          type: 'wave' as FansaType,
+          fromName: request.playerName,
+          completed: false,
+          id: newId,
+          emoji: request.data.emoji as string,
+          text: request.data.text as string,
+        }]);
+        updateExcitement(15);
+      }
+    });
+  }, [activeRequests, fansaRequests, updateExcitement]);
+
+  // Handle incoming calls - show effect
+  useEffect(() => {
+    if (activeCalls.length > 0) {
+      const latestCall = activeCalls[activeCalls.length - 1];
+      setShowCallEffect(latestCall);
+      updateExcitement(5);
+      
+      setTimeout(() => setShowCallEffect(null), 2000);
+    }
+  }, [activeCalls, updateExcitement]);
 
   const handleSongSelect = (song: Song) => {
     setSelectedSong(song);
@@ -81,22 +116,6 @@ export default function SingerPage() {
   useEffect(() => {
     if (phase !== 'playing') return;
 
-    const timers = MOCK_FANSA_SEQUENCE.map(({ type, fromName, delay }, index) => {
-      return setTimeout(() => {
-        setFansaRequests((prev) => [
-          ...prev,
-          { type, fromName, completed: false, id: `req-${index}` },
-        ]);
-        updateExcitement(10);
-      }, delay);
-    });
-
-    return () => timers.forEach(clearTimeout);
-  }, [phase, updateExcitement]);
-
-  useEffect(() => {
-    if (phase !== 'playing') return;
-
     const interval = setInterval(() => {
       updateExcitement(2);
     }, 3000);
@@ -109,7 +128,13 @@ export default function SingerPage() {
       prev.map((req) => (req.id === id ? { ...req, completed: true } : req))
     );
     setCompletedCount((prev) => prev + 1);
-    updateExcitement(5);
+    updateExcitement(10);
+    
+    // Clear from room store if it's a synced request
+    if (id.startsWith('sync-')) {
+      const timestamp = parseInt(id.replace('sync-', ''));
+      clearRequest(timestamp);
+    }
   };
 
   const handleFinish = () => {
@@ -132,7 +157,7 @@ export default function SingerPage() {
   const pendingRequests = fansaRequests.filter((r) => !r.completed);
 
   return (
-    <main className="min-h-screen flex flex-col">
+    <main className="min-h-screen flex flex-col relative">
       {/* Audio element */}
       {selectedSong && (
         <audio 
@@ -142,6 +167,29 @@ export default function SingerPage() {
           onEnded={handleFinish}
         />
       )}
+
+      {/* Call Effect Overlay */}
+      <AnimatePresence>
+        {showCallEffect && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+          >
+            <motion.div
+              initial={{ scale: 0.5, y: 50 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 1.5, opacity: 0 }}
+              className="text-center bg-purple-600/80 backdrop-blur-md px-8 py-4 rounded-2xl"
+            >
+              <span className="text-5xl block mb-2">{showCallEffect.data.emoji as string}</span>
+              <span className="text-2xl font-bold text-white block">{showCallEffect.data.text as string}</span>
+              <span className="text-white/60 text-sm">from {showCallEffect.playerName}</span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Song Selection */}
       {phase === 'song-select' && (
@@ -310,14 +358,18 @@ export default function SingerPage() {
             </p>
           </div>
 
-          {/* Fansa Requests */}
+          {/* Fansa Requests - Now includes synced requests */}
           <div className="flex-1">
             <h3 className="text-white font-bold mb-3 flex items-center gap-2">
               💕 ファンサーリクエスト
               {pendingRequests.length > 0 && (
-                <span className="bg-pink-500 text-white text-xs px-2 py-0.5 rounded-full">
+                <motion.span 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="bg-pink-500 text-white text-xs px-2 py-0.5 rounded-full"
+                >
                   {pendingRequests.length}
-                </span>
+                </motion.span>
               )}
             </h3>
 
@@ -329,17 +381,58 @@ export default function SingerPage() {
                   className="text-center text-white/40 py-4"
                 >
                   <p>リクエストを待っています...</p>
+                  <p className="text-xs mt-1">バンドメンバーからのリクエストがここに表示されます</p>
                 </motion.div>
               ) : (
                 <div className="space-y-3">
-                  {fansaRequests.slice(-3).map((request) => (
-                    <FansaRequestDisplay
+                  {fansaRequests.slice(-5).map((request) => (
+                    <motion.div
                       key={request.id}
-                      type={request.type}
-                      fromName={request.fromName}
-                      completed={request.completed}
-                      onComplete={() => handleCompleteFansa(request.id)}
-                    />
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                    >
+                      {request.emoji ? (
+                        // Custom request from band
+                        <div 
+                          className={`p-4 rounded-xl border ${
+                            request.completed 
+                              ? 'bg-green-500/20 border-green-500/30' 
+                              : 'bg-yellow-500/20 border-yellow-500/30'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className="text-3xl">{request.emoji}</span>
+                              <div>
+                                <span className="text-white font-bold">{request.text}</span>
+                                <p className="text-white/60 text-sm">from {request.fromName}</p>
+                              </div>
+                            </div>
+                            {!request.completed && (
+                              <motion.button
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => handleCompleteFansa(request.id)}
+                                className="bg-yellow-500 text-white px-4 py-2 rounded-lg font-bold"
+                              >
+                                OK！
+                              </motion.button>
+                            )}
+                            {request.completed && (
+                              <span className="text-green-400 text-2xl">✓</span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        // Standard fansa request
+                        <FansaRequestDisplay
+                          type={request.type}
+                          fromName={request.fromName}
+                          completed={request.completed}
+                          onComplete={() => handleCompleteFansa(request.id)}
+                        />
+                      )}
+                    </motion.div>
                   ))}
                 </div>
               )}

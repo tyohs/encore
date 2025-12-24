@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, useParams } from 'next/navigation';
 import { InstrumentType, INSTRUMENT_INFO } from '@/types';
 import { SONGS, Song } from '@/data/songs';
 import { getChart, Difficulty } from '@/data/charts';
+import { useRoomStore } from '@/store/roomStore';
 import InstrumentSelect from '@/components/InstrumentSelect';
 import BandGame from '@/components/BandGame';
 
@@ -21,7 +22,9 @@ export default function BandPlayPage() {
   const [selectedInstrument, setSelectedInstrument] = useState<InstrumentType | null>(null);
   const [countdown, setCountdown] = useState(3);
   const [score, setScore] = useState(0);
+  const [mvUrl, setMvUrl] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const difficulty: Difficulty = 'easy';
 
@@ -30,8 +33,27 @@ export default function BandPlayPage() {
     setPhase('instrument-select');
   };
 
+  const handleMvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('video/')) {
+      const url = URL.createObjectURL(file);
+      setMvUrl(url);
+    }
+  };
+
+  const handleRemoveMv = () => {
+    if (mvUrl) {
+      URL.revokeObjectURL(mvUrl);
+      setMvUrl(null);
+    }
+  };
+
   const handleInstrumentSelect = async (instrument: InstrumentType) => {
     setSelectedInstrument(instrument);
+    
+    // Initialize room sync with instrument
+    useRoomStore.getState().initRoom(roomId, INSTRUMENT_INFO[instrument].label, 'band', instrument);
+    
     setPhase('countdown');
 
     for (let i = 3; i > 0; i--) {
@@ -86,12 +108,60 @@ export default function BandPlayPage() {
         />
       )}
 
+      {/* Hidden file input for MV */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/mp4,video/webm,video/*"
+        onChange={handleMvUpload}
+        className="hidden"
+      />
+
       {/* Song Selection */}
       {phase === 'song-select' && (
-        <div className="flex-1 flex flex-col p-6">
-          <div className="text-center mb-8">
+        <div className="flex-1 flex flex-col p-6 overflow-auto">
+          <div className="text-center mb-6">
             <h1 className="text-2xl font-bold text-white mb-2">曲を選択</h1>
             <p className="text-white/50 text-sm">演奏したい曲を選んでください</p>
+          </div>
+
+          {/* MV Upload Section */}
+          <div className="mb-6 p-4 rounded-2xl backdrop-blur-md bg-white/5 border border-white/10">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-medium text-sm">🎬 MV映像（オプション）</h3>
+                <p className="text-white/40 text-xs mt-1">
+                  {mvUrl ? '映像がセットされています' : 'MP4をアップロードして背景に表示'}
+                </p>
+              </div>
+              {mvUrl ? (
+                <div className="flex gap-2">
+                  <span className="text-green-400 text-sm">✓ 設定済み</span>
+                  <button
+                    onClick={handleRemoveMv}
+                    className="text-red-400 text-sm hover:text-red-300"
+                  >
+                    削除
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-2 rounded-lg bg-purple-600/50 text-white text-sm hover:bg-purple-600/70 transition-colors"
+                >
+                  アップロード
+                </button>
+              )}
+            </div>
+            {mvUrl && (
+              <div className="mt-3 rounded-lg overflow-hidden h-20 bg-black/50">
+                <video 
+                  src={mvUrl} 
+                  className="w-full h-full object-cover opacity-60"
+                  muted
+                />
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -168,6 +238,9 @@ export default function BandPlayPage() {
             <p className="text-white/50 mt-4">
               {INSTRUMENT_INFO[selectedInstrument].label}で演奏開始
             </p>
+            {mvUrl && (
+              <p className="text-purple-400/60 text-sm mt-2">🎬 MV付き</p>
+            )}
           </motion.div>
         </div>
       )}
@@ -178,6 +251,7 @@ export default function BandPlayPage() {
           chart={chart}
           instrument={selectedInstrument}
           audioRef={audioRef}
+          mvUrl={mvUrl}
           onScoreUpdate={handleScoreUpdate}
           onGameEnd={handleGameEnd}
         />

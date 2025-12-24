@@ -13,13 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ENCORE - みんなで盛り上がるカラオケアプリ",
-  description: "歌っている人も聴いている人も、全員で一緒に盛り上がれるカラオケ体験アプリ",
+  title: "みんカラ - みんなで作る、みんなのカラオケ",
+  description: "歌う人も演奏する人も、全員が主役になれる新感覚カラオケアプリ",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ENCORE",
+    title: "みんカラ",
   },
 };
 

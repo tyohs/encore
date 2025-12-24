@@ -37,9 +37,9 @@ export default function Home() {
           animate={{ opacity: [0.8, 1, 0.8] }}
           transition={{ repeat: Infinity, duration: 3 }}
         >
-          ENCORE
+          🎤 みんカラ
         </motion.h1>
-        <p className="text-white/50 text-sm tracking-wider">即席バンド形成アプリ</p>
+        <p className="text-white/50 text-sm tracking-wider">みんなで作る、みんなのカラオケ</p>
       </motion.div>
 
       <motion.div

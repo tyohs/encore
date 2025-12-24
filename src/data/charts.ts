@@ -187,7 +187,7 @@ const shining_bass: InstrumentChart = {
 };
 
 // ============================================
-// 「Asou」BPM: 80, 長さ: 200秒
+// 「Escort」BPM: 80, 長さ: 200秒
 // ============================================
 
 const asou_drums: InstrumentChart = {
@@ -229,7 +229,7 @@ export const CHARTS: InstrumentChart[] = [
   shining_guitar,
   shining_keyboard,
   shining_bass,
-  // Asou
+  // Escort
   asou_drums,
   asou_guitar,
   asou_keyboard,

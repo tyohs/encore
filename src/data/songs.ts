@@ -130,9 +130,9 @@ export const SONGS: Song[] = [
   },
   {
     id: 'asou',
-    title: 'Asou',
+    title: 'Escort',
     artist: 'Unknown',
-    audioUrl: '/audio/Asou.mp3',
+    audioUrl: '/audio/Escort.mp3',
     bpm: 80,
     duration: 200, // 約3分20秒
     difficulty: { easy: true, normal: true, hard: false },
@@ -158,7 +158,7 @@ export const SONGS: Song[] = [
       { time: 160, text: '♪ ♪ ♪', duration: 10 },
       { time: 170, text: '♪ ♪ ♪', duration: 10 },
       { time: 180, text: '♪ ♪ ♪', duration: 10 },
-      { time: 190, text: '🎵 Asou', duration: 10 },
+      { time: 190, text: '🎵 Escort', duration: 10 },
     ],
   },
   {
