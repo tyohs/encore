@@ -3,11 +3,13 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { SONGS } from '@/data/songs';
 
 // 同期イベントの種類
 export type SyncEventType = 
   | 'player_join'
   | 'player_leave'
+  | 'players_sync'
   | 'call'
   | 'request'
   | 'message'
@@ -113,6 +115,37 @@ export const useRoomStore = create<RoomState>((set, get) => ({
         
         switch (syncEvent.type) {
           case 'player_join':
+            set(s => ({
+              players: [...s.players.filter(p => p.id !== syncEvent.playerId), {
+                id: syncEvent.playerId,
+                name: syncEvent.playerName,
+                role: syncEvent.data.role as Player['role'],
+                instrument: syncEvent.data.instrument as string | undefined,
+              }]
+            }));
+            // 新規参加者に自分の存在を通知（自分自身のイベントでなければ）
+            const currentState = get();
+            if (syncEvent.playerId !== currentState.playerId) {
+              const myPlayer = currentState.players.find(p => p.id === currentState.playerId);
+              if (myPlayer) {
+                channel?.send({
+                  type: 'broadcast',
+                  event: 'sync',
+                  payload: {
+                    type: 'players_sync',
+                    roomId: currentState.roomId,
+                    playerId: currentState.playerId,
+                    playerName: currentState.playerName,
+                    data: { role: myPlayer.role, instrument: myPlayer.instrument },
+                    timestamp: Date.now(),
+                  } as SyncEvent,
+                });
+              }
+            }
+            break;
+          
+          case 'players_sync':
+            // 既存プレイヤーの情報を受信して追加
             set(s => ({
               players: [...s.players.filter(p => p.id !== syncEvent.playerId), {
                 id: syncEvent.playerId,
@@ -376,9 +409,11 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       
       const mappedReservations = data.map((r: any) => {
         const player = state.players.find(p => p.id === r.user_id);
+        const song = SONGS.find(s => s.id === r.song_id);
         return {
           ...r,
           user_name: player ? player.name : 'Unknown',
+          song_title: song ? song.title : 'Unknown Song',
         };
       });
 
